@@ -1,1 +1,1 @@
-# beam_detection
+# ReferenceBeamDetection
