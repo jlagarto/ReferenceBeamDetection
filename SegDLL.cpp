@@ -26,9 +26,10 @@ SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *
 	Mat merged[] = {blue, green, frame};
 	merge(merged, 3, bgr);
 
+	// only segment if a valid lifetime value is passed. lifetime = 0 is flag for non-valid lifetime value
 	if (lifetime > 0.0)
 	{
-
+		
 		// validate thresholds
 		// set defaults
 		int default_min = 230;
@@ -42,33 +43,37 @@ SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *
 			value_max = default_max;
 		}	
 	
+		// TODO: 
+		// segmentation based on red channel only is prone to bugs. 
+		// if light is too bright, white spots on the image due to reflection will also be segmented
+		
 		// threshold red channel
 		threshold(frame, frame, value_min, value_max, THRESH_BINARY);
 	
-		// morphologic erosion
-		Mat element = getStructuringElement(MORPH_ELLIPSE, Size(9, 9), Point(-1, -1)); // Create structured element of size 3
-		// remove holes inside mask
-		morphologyEx(frame, frame, MORPH_CLOSE, element);
+		// morphologic erosion (3,3 too low; 15,15 too high)
+		Mat element = getStructuringElement(MORPH_ELLIPSE, Size(11, 11), Point(-1, -1)); // Create structured element of size 3
+		
 		// remove "noise"
 		morphologyEx(frame, frame, MORPH_ERODE, element);
+
+		// remove holes inside mask
+		morphologyEx(frame, frame, MORPH_CLOSE, element);
 	
 		// find contours
-		//vector<vector<Point> > contours;
-		vector<Mat> contours;
+		vector<vector<Point> > contours;
+		//vector<Mat> contours;
 		vector<Vec4i> hierarchy;
 		findContours(frame, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
-		Mat drawing = Mat::zeros(frame.size(), CV_8UC3);
 
 		// find region of maximum intensity (detect circle)
 		Mat mask = frame.clone();
 		Mat mask_inv;
-		bitwise_not(frame, mask_inv);
-
-		
+		bitwise_not(frame, mask_inv);		
 
 		// calculate average lifetime in matrix
-		float upper_lifetime = 4.0; // set upper boundary for colormap
-		float lower_lifetime = 1.0; // lower boundary
+		// previously set from 1.0 to 4.0
+		float upper_lifetime = 3.0; // set upper boundary for colormap
+		float lower_lifetime = 0.5; // lower boundary
 	
 		// normalize lifetime 
 		if (lifetime > upper_lifetime)
@@ -87,7 +92,18 @@ SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *
 		if (contours.size() > 0)
 		{
 
-			vector<vector<Point> > contours_poly(contours.size());
+			// this is a small hack; 
+			// when more than 1 region is found (due to artefacts eg too much light), look only for the largest region which will be defined by the true segmentation
+			if (contours.size() > 1)
+			{
+				// sort contours by area
+				sort(contours.begin(), contours.end(), compareContourAreas);
+
+				// grab contours
+				contours[0] = contours[contours.size() - 1];
+			}
+
+			vector<vector<Point>> contours_poly(contours.size());
 			vector<Point2f>center(contours.size());
 			vector<float>radius(contours.size());
 
@@ -158,12 +174,10 @@ SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *
 	
 		// add counts in segmented regions
 		add(counts, local_mask, counts);
-	
 	}
-
-	// convert mask to rg
+	
+	// convert mask to rgb
 	Mat overlay;
-	// should be lifetime maps instead of frame
 	applyColorMap(taus, overlay, COLORMAP_JET);
 
 	// convert all blue pixels in image to black, to become transaparent as rgb
@@ -173,15 +187,22 @@ SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *
 	addWeighted(bgr, 0.5, overlay, 1, 0.0, bgr);
 	
 	// split
-	std::vector<cv::Mat> bgr_vec;
-	cv::split(bgr, bgr_vec);
+	vector<Mat> bgr_vec;
+	split(bgr, bgr_vec);
 	
 	// copy to allocated memory
 	memcpy(&b[0], &bgr_vec[0].data[0], sizeof(uchar)*cols*rows);
 	memcpy(&g[0], &bgr_vec[1].data[0], sizeof(uchar)*cols*rows);
 	memcpy(&r[0], &bgr_vec[2].data[0], sizeof(uchar)*cols*rows);
-	
+
 	return 0;
+}
+
+// comparison function object
+bool compareContourAreas(vector<Point> contour1, vector<Point> contour2) {
+	double i = fabs(contourArea(Mat(contour1)));
+	double j = fabs(contourArea(Mat(contour2)));
+	return (i < j);
 }
 
 int limit_thresholds(int value)

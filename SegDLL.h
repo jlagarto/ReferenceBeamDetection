@@ -1,7 +1,8 @@
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/contrib/contrib.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+using namespace cv;
 
 // The following ifdef block is the standard way of creating macros which make exporting 
 // from a DLL simpler. All files within this DLL are compiled with the SEGDLL_EXPORTS
@@ -22,6 +23,6 @@ public:
 	// TODO: add your methods here.
 };
 
-//SEGDLL_API int fnSegDLL(unsigned char *b, unsigned char *g, unsigned char *r, unsigned char *map_counts, unsigned char *map_lifetime, float lifetime);
 SEGDLL_API int fnSegDLL(uchar *b, uchar *g, uchar *r, uchar *map_counts, uchar *map_lifetime, float lifetime, int min_thres, int max_thres, int rin, float *center_x, float *center_y, float *rout);
 int limit_thresholds(int value);
+bool compareContourAreas(vector<Point> contour1, vector<Point> contour2);
